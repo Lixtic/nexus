@@ -315,6 +315,8 @@ class RavenDemo(gr.Blocks):
                 raven_function_call = raven_function_call.removesuffix("<bot_end>")
                 yield get_returns()
 
+        print(f"Raw Raven response before formatting: {raven_function_call}")
+
         r_calls = [c.strip() for c in raven_function_call.split(";") if c.strip()]
         f_r_calls = []
         for r_c in r_calls:
