@@ -158,7 +158,11 @@ def {name}(**kwargs):
 
 class RavenDemo(gr.Blocks):
     def __init__(self, config: DemoConfig) -> None:
-        super().__init__(theme=gr.themes.Soft(), css=CSS, title="NexusRaven V2 Demo")
+        theme = gr.themes.Soft(
+            primary_hue=gr.themes.colors.blue,
+            secondary_hue=gr.themes.colors.blue,
+        )
+        super().__init__(theme=theme, css=CSS, title="NexusRaven V2 Demo")
 
         self.config = config
         self.tools = Tools(config)
@@ -276,6 +280,8 @@ class RavenDemo(gr.Blocks):
                 inputs=[places_dropdown, relevant_places],
                 outputs=gmaps_html,
             )
+
+            self.load(None, None, None, js=CHANGE_DARK_SCRIPT)
 
     def on_submit(self, query: str, request: gr.Request):
         def get_returns():
