@@ -281,8 +281,6 @@ class RavenDemo(gr.Blocks):
                 outputs=gmaps_html,
             )
 
-            self.load(None, None, None, js=CHANGE_DARK_SCRIPT)
-
     def on_submit(self, query: str, request: gr.Request):
         def get_returns():
             return (
