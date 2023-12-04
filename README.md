@@ -1,6 +1,6 @@
 ---
-title: NexusRaven V2 Demo
-emoji: 🏃
+title: 🐦‍⬛ NexusRaven-V2 Demo
+emoji: 🐦‍⬛
 colorFrom: gray
 colorTo: green
 sdk: gradio
