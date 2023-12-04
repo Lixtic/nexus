@@ -200,7 +200,17 @@ class Tools:
         all_reviews = []
         for place_name in place_names:
             if isinstance(place_name, str):
-                if location:
+                if location and isinstance(location, list) and len(location) > 0:
+                    # Sometimes location will be a list of relevant places from the API.
+                    # We just use the first one.
+                    location = location[0]
+                elif location and isinstance(location, list):
+                    # No matching spaces found in the API, len of 0
+                    location = None
+                if location and isinstance(location, dict):
+                    # Weird response from the API, likely a timeout error, disable geoloc
+                    location = None
+                if location and isinstance(location, str):
                     place_name += " , " + location
             elif isinstance(place_name, dict) and "results" in place_name and "name" in place_name["results"]:
                 place_name = place_name["results"]["name"]
