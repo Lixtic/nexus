@@ -200,7 +200,7 @@ class RavenDemo(gr.Blocks):
             )
 
             raven_function_call = gr.Code(
-                label="🐦‍⬛ NexusRaven V2 13B generated function call",
+                label="🐦‍⬛ NexusRaven V2 13B zero-shot generated function call",
                 language="python",
                 interactive=False,
                 lines=10,
