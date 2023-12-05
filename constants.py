@@ -7,14 +7,14 @@ RAVEN_GENERATION_KWARGS = {
     "stream": True,
 }
 
-SUMMARY_MODEL_PROMPT = """<s>GPT4 Correct User:
-I'm currently in {current_location} and the current time is {current_time}.
+SUMMARY_MODEL_PROMPT = """GPT4 Correct User: Please answer the following query using natural language based on the search results below with no extra hallucinated content. When there is no relevant information in the search results, please do not answer extra information and answer with "No relevant information". 
+For your reference, the current location is {current_location} and the current time is {current_time}.
 
-Search results for relevant areas of interest to the user query:
+Query: {query}
+
+Search results:
 {results}
-
-Now please answer the following query using the search results shown above. Please keep your answer concise.
-Query: {query}<|end_of_turn|>GPT4 Correct Assistant:"""
+<|end_of_turn|>GPT4 Correct Assistant: """
 
 SUMMARY_MODEL_GENERATION_KWARGS = {
     "max_new_tokens": 1000,
