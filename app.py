@@ -258,6 +258,7 @@ class RavenDemo(gr.Blocks):
                     lines=20,
                 )
 
+            has_error = gr.State(False)
             user_input.submit(
                 fn=self.on_submit,
                 inputs=[user_input],
@@ -270,9 +271,14 @@ class RavenDemo(gr.Blocks):
                     gmaps_html,
                     steps_accordion,
                     *steps,
+                    has_error,
                 ],
                 concurrency_limit=20,  # not a hyperparameter
                 api_name=False,
+            ).then(
+                self.check_for_error,
+                inputs=has_error,
+                outputs=[],
             )
 
             for i, button in enumerate(examples):
@@ -300,10 +306,12 @@ class RavenDemo(gr.Blocks):
                 gmaps_html,
                 steps_accordion,
                 *steps,
+                has_error,
             )
 
         def on_error():
             initial_return[0] = gr.Textbox(interactive=True, autofocus=False)
+            initial_return[-1] = True
             return initial_return
 
         user_input = gr.Textbox(interactive=False)
@@ -314,6 +322,7 @@ class RavenDemo(gr.Blocks):
         gmaps_html = ""
         steps_accordion = gr.Accordion(open=True)
         steps = [gr.Textbox(value="", visible=False) for _ in range(self.max_num_steps)]
+        has_error = False
         initial_return = list(get_returns())
         yield initial_return
 
@@ -340,12 +349,10 @@ class RavenDemo(gr.Blocks):
                 f_r_call = format_str(r_c.strip(), mode=Mode())
             except:
                 yield on_error()
-                gr.Warning(ERROR_MESSAGE)
                 return
 
             if not self.whitelist_function_names(f_r_call):
                 yield on_error()
-                gr.Warning(ERROR_MESSAGE)
                 return
 
             f_r_calls.append(f_r_call)
@@ -442,6 +449,10 @@ class RavenDemo(gr.Blocks):
 
         user_input = gr.Textbox(interactive=True, autofocus=False)
         yield get_returns()
+
+    def check_for_error(self, has_error: bool) -> None:
+        if has_error:
+            raise gr.Error(ERROR_MESSAGE)
 
     def whitelist_function_names(self, function_call_str: str) -> bool:
         """
