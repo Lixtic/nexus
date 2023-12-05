@@ -7,7 +7,7 @@ RAVEN_GENERATION_KWARGS = {
     "stream": True,
 }
 
-SUMMARY_MODEL_PROMPT = """GPT4 Correct User: Please answer the following query using natural language based on the search results below with no extra hallucinated content. When there is no relevant information in the search results, please do not answer extra information and answer with "No relevant information". 
+SUMMARY_MODEL_PROMPT = """GPT4 Correct User: Please answer the following query using natural language based on the search results below with no extra hallucinated content. When there is no relevant information in the search results, please do not answer extra information and answer with "No relevant information". Please keep your response concise. 
 For your reference, the current location is {current_location} and the current time is {current_time}.
 
 Query: {query}
