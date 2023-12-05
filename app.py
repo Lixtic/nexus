@@ -407,7 +407,7 @@ class RavenDemo(gr.Blocks):
 
             break
 
-        user_input = gr.Textbox(interactive=True)
+        user_input = gr.Textbox(interactive=True, autofocus=False)
         yield get_returns()
 
     def get_summary_model_prompt(self, results: List, query: str) -> None:
