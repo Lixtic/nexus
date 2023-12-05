@@ -13,6 +13,9 @@ class DemoConfig:
 
     summary_model_endpoint: str
 
+    mongo_endpoint: str
+    mongo_collection: str
+
     @classmethod
     def load_from_env(cls) -> "DemoConfig":
         return DemoConfig(
@@ -21,4 +24,6 @@ class DemoConfig:
             raven_endpoint=getenv("RAVEN_ENDPOINT"),
             hf_token=getenv("HF_TOKEN"),
             summary_model_endpoint=getenv("SUMMARY_MODEL_ENDPOINT"),
+            mongo_endpoint=getenv("MONGO_ENDPOINT"),
+            mongo_collection=getenv("MONGO_COLLECTION"),
         )
