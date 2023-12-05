@@ -6,6 +6,7 @@ from os import getenv
 @dataclass
 class DemoConfig:
     gmaps_client_key: str
+    ip_api_key: str
 
     raven_endpoint: str
     hf_token: str
@@ -16,6 +17,7 @@ class DemoConfig:
     def load_from_env(cls) -> "DemoConfig":
         return DemoConfig(
             gmaps_client_key=getenv("GMAPS_CLIENT_KEY"),
+            ip_api_key=getenv("IP_API_KEY"),
             raven_endpoint=getenv("RAVEN_ENDPOINT"),
             hf_token=getenv("HF_TOKEN"),
             summary_model_endpoint=getenv("SUMMARY_MODEL_ENDPOINT"),
