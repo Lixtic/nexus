@@ -20,6 +20,8 @@ import gradio as gr
 
 from huggingface_hub import InferenceClient
 
+from pymongo import MongoClient
+
 from constants import *
 from config import DemoConfig
 from tools import Tools
@@ -168,6 +170,8 @@ class RavenDemo(gr.Blocks):
         self.config = config
         self.tools = Tools(config)
         self.functions_helper = FunctionsHelper(self.tools)
+        mongo_client = MongoClient(host=config.mongo_endpoint)
+        self.collection = mongo_client[config.mongo_collection]["logs"]
 
         self.raven_client = InferenceClient(
             model=config.raven_endpoint, token=config.hf_token
@@ -318,7 +322,8 @@ class RavenDemo(gr.Blocks):
                 raven_function_call = raven_function_call.removesuffix("<bot_end>")
                 yield get_returns()
 
-        print(f"Raw Raven response before formatting: {raven_function_call}")
+        raw_raven_response = raven_function_call
+        print(f"Raw Raven response before formatting: {raw_raven_response}")
 
         r_calls = [c.strip() for c in raven_function_call.split(";") if c.strip()]
         f_r_calls = []
@@ -407,6 +412,14 @@ class RavenDemo(gr.Blocks):
                     break
 
             break
+
+        self.collection.insert_one(
+            {
+                "query": query,
+                "raven_output": raw_raven_response,
+                "summary_output": summary_model_summary,
+            }
+        )
 
         user_input = gr.Textbox(interactive=True, autofocus=False)
         yield get_returns()
