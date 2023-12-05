@@ -346,6 +346,9 @@ class RavenDemo(gr.Blocks):
             results.extend(result)
             for i, (description, explanation) in enumerate(function_call_list):
                 i = i + previous_num_calls
+
+                if len(description) > 100:
+                    description = function_call_plan[i]
                 to_stream = f"{i+1}. {description} ..."
                 steps[i] = ""
                 for c in to_stream:
@@ -475,6 +478,8 @@ class RavenDemo(gr.Blocks):
                 relevant_places[
                     (result["formatted_address"], result["for_location"])
                 ] = None
+            elif "vicinity" in result and "name" in result:
+                relevant_places[(result["vicinity"], result["name"])] = None
 
         relevant_places = list(relevant_places.keys())
 
