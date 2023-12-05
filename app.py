@@ -1,282 +1,531 @@
-"""
-These are all the tools used in the NexusRaven V2 demo! You can provide any tools you want to Raven.
+from typing import Any, Callable, List, Tuple
 
-Nothing in this file is specific to Raven, code/information related to Raven can be found in the `raven_demo.py` file.
+import huggingface_hub
 
-For more information about the Google Maps Places API Python client, see https://github.com/googlemaps/google-maps-services-python
-"""
-from typing import Dict, List
+from dataclasses import dataclass
 
-from math import radians, cos, sin, asin, sqrt
+from datetime import datetime
 
-import random
+from time import sleep
 
-import requests
+import inspect
 
-from googlemaps import Client
+from random import randint
 
+from urllib.parse import quote
+
+from black import Mode, format_str
+
+import gradio as gr
+
+from huggingface_hub import InferenceClient
+
+from constants import *
 from config import DemoConfig
+from tools import Tools
 
 
-class Tools:
-    def __init__(self, config: DemoConfig) -> None:
-        self.config = config
+@dataclass
+class Function:
+    name: str
+    short_description: str
+    description_function: Callable[[Any], str]
+    explanation_function: Callable[[Any], str]
 
-        self.gmaps = Client(config.gmaps_client_key)
-        self.client_ip: str | None = None
 
-    def haversine(self, lon1, lat1, lon2, lat2) -> float:
-        """
-        Calculate the great circle distance in kilometers between two points on the earth (specified in decimal degrees).
-        """
-        # convert decimal degrees to radians
-        lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+FUNCTIONS = [
+    Function(
+        name="get_current_location",
+        short_description="Finding your city",
+        description_function=lambda *_, **__: "Finding your city",
+        explanation_function=lambda result: f"Found you in {result}!",
+    ),
+    Function(
+        name="sort_results",
+        short_description="Sorting results",
+        description_function=lambda places, sort, descending=True, first_n=None: f"Sorting results by {sort} from "
+        + ("lowest to highest" if not descending else "highest to lowest"),
+        explanation_function=lambda result: "Done!",
+    ),
+    Function(
+        name="get_latitude_longitude",
+        short_description="Convert to coordinates",
+        description_function=lambda location: f"Converting {location} into latitude and longitude coordinates",
+        explanation_function=lambda result: "Converted!",
+    ),
+    Function(
+        name="get_distance",
+        short_description="Calcuate distance",
+        description_function=lambda place_1, place_2: "Calculating distances",
+        explanation_function=lambda result: result[2],
+    ),
+    Function(
+        name="get_recommendations",
+        short_description="Read recommendations",
+        description_function=lambda topics, **__: f"Reading recommendations for the following "
+        + (
+            f"topics: {', '.join(topics)}" if len(topics) > 1 else f"topic: {topics[0]}"
+        ),
+        explanation_function=lambda result: f"Read {len(result)} recommendations",
+    ),
+    Function(
+        name="find_places_near_location",
+        short_description="Look for places",
+        description_function=lambda type_of_place, location, radius_miles=50: f"Looking for places near {location} within {radius_miles} with the following "
+        + (
+            f"types: {', '.join(type_of_place)}"
+            if isinstance(type_of_place, list)
+            else f"type: {type_of_place}"
+        ),
+        explanation_function=lambda result: f"Found "
+        + (f"{len(result)} places!" if len(result) > 1 else f"1 place!"),
+    ),
+    Function(
+        name="get_some_reviews",
+        short_description="Fetching reviews",
+        description_function=lambda place_names, **_: f"Fetching reviews for the requested items",
+        explanation_function=lambda result: f"Fetched {len(result)} reviews!",
+    ),
+]
 
-        # haversine formula
-        dlon = lon2 - lon1
-        dlat = lat2 - lat1
-        a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
-        c = 2 * asin(sqrt(a))
-        r = 6371  # Radius of Earth in kilometers. Use 3956 for miles
-        return round(c * r, 2)
 
-    def get_current_location(self) -> str:
-        """
-        Returns the current location. ONLY use this if the user has not provided an explicit location in the query.
-        """
-        try:
-            response = requests.get(f"http://ip-api.com/json/{self.client_ip}")
-            location_data = response.json()
-            city = location_data["city"]
-            region = location_data["regionName"]
-            country = location_data["countryCode"]
-            location = f"{city}, {region}, {country}"
-            print(f"User successfully located in {location}")
-        except:
-            location = "San Francisco, California, US"
-            print(f"Not able to find user. Defaulting to {location}")
-        return location
+class FunctionsHelper:
+    FUNCTION_DEFINITION_TEMPLATE = '''Function:
+def {name}{signature}:
+"""
+{docstring}
+"""
 
-    def sort_results(
-        self, places: list, sort: str, descending: bool = True, first_n: int = None
-    ) -> List:
-        """
-        Sorts the results by either 'distance', 'rating' or 'price'.
+'''
+    PROMPT_TEMPLATE = """{function_definitions}User Query: {query}<human_end>Call:"""
 
-        - places (list): The output list from the recommendations.
-        - sort (str): If set, sorts by either 'distance' or 'rating' or 'price'. ONLY supports 'distance' or 'rating' or 'price'.
-        - descending (bool): If descending is set, setting this boolean to true will sort the results such that the highest values are first.
-        - first_n (int): If provided, only retains the first n items in the final sorted list.
+    def __init__(self, tools: Tools) -> None:
+        self.tools = tools
 
-        When people ask for 'closest' or 'nearest', sort by 'distance'.
-        When people ask for 'cheapest' or 'most expensive', sort by 'price'.
-        When people ask for 'best' or 'highest rated', sort by rating.
-        """
+        function_definitions = ""
+        for function in FUNCTIONS:
+            f = getattr(tools, function.name)
+            signature = inspect.signature(f)
+            docstring = inspect.getdoc(f)
 
-        if not sort:
-            return places
-
-        if sort == "price":
-            sort = "price_level"
-
-        items = sorted(
-            places,
-            key=lambda x: x.get(sort, float("inf")),
-            reverse=descending,
-        )
-
-        if first_n:
-            items = items[:first_n]
-        return items
-
-    def get_latitude_longitude(self, location: str) -> List:
-        """
-        Given a city name, this function provides the latitude and longitude of the specific location.
-
-        - location: This can be a city like 'Austin', or a place like 'Austin Airport', etc.
-        """
-        if (
-            isinstance(location, list)
-            and len(location) != 0
-            and isinstance(location[0], dict)
-        ):
-            return location
-
-        # For response content, see https://developers.google.com/maps/documentation/places/web-service/search-find-place#find-place-responses
-        results = self.gmaps.find_place(
-            location, input_type="textquery", location_bias="ipbias"
-        )
-        if results["status"] != "OK":
-            return []
-        print(results)
-
-        # We always use the first candidate
-        place_id = results["candidates"][0]["place_id"]
-
-        # For response format, see https://developers.google.com/maps/documentation/places/web-service/details#PlaceDetailsResponses
-        place_details = self.gmaps.place(place_id=place_id)["result"]
-        return [place_details]
-
-    def get_distance(self, place_1: str, place_2: str):
-        """
-        Provides distance between two locations. Do NOT provide latitude longitude, but rather, provide the string descriptions.
-
-        Allows you to provide output from the get_recommendations API.
-
-        - place_1: The first location.
-        - place_2: The second location.
-        """
-        if isinstance(place_1, list) and len(place_1) > 0:
-            place_1 = place_1[0]
-        if isinstance(place_2, list) and len(place_2) > 0:
-            place_2 = place_2[0]
-
-        if isinstance(place_1, dict):
-            place_1: str = place_1["name"]
-        if isinstance(place_2, dict):
-            place_2: str = place_2["name"]
-
-        latlong_1 = self.get_latitude_longitude(place_1)
-        if len(latlong_1) == 0:
-            return f"No place found for `{place_1}`. Please be more explicit."
-
-        latlong_2 = self.get_latitude_longitude(place_2)
-        if len(latlong_2) == 0:
-            return f"No place found for `{place_2}`. Please be more explicit."
-
-        latlong_1 = latlong_1[0]
-        latlong_2 = latlong_2[0]
-
-        latlong_values_1 = latlong_1["geometry"]["location"]
-        latlong_values_2 = latlong_2["geometry"]["location"]
-
-        dist = self.haversine(
-            latlong_values_1["lng"],
-            latlong_values_1["lat"],
-            latlong_values_2["lng"],
-            latlong_values_2["lat"],
-        )
-        dist = dist * 0.621371
-
-        return [
-            latlong_1,
-            latlong_2,
-            f"The distance between {place_1} and {place_2} is {dist:.3f} miles",
-        ]
-
-    def get_recommendations(self, topics: list, lat_long: tuple):
-        """
-        Returns the recommendations for a specific topic that is of interest. Remember, a topic IS NOT an establishment. For establishments, please use another function.
-
-        - topics (list): A list of topics of interest to pull recommendations for. Can be multiple words.
-        - lat_long (tuple): The lat_long of interest.
-        """
-        if len(lat_long) == 0:
-            return []
-
-        topic = " ".join(topics)
-        latlong = lat_long[0]["geometry"]["location"]
-        # For response format, see https://developers.google.com/maps/documentation/places/web-service/search-find-place#find-place-responses
-        results = self.gmaps.places(
-            query=topic,
-            location=latlong,
-        )
-        return results["results"]
-
-    def find_places_near_location(
-        self, type_of_place: list, location: str, radius_miles: int = 50
-    ) -> List[Dict]:
-        """
-        Find places close to a very defined location.
-
-        - type_of_place (list): The type of place. This can be something like 'restaurant' or 'airport'. Make sure that it is a physical location. You can provide multiple words.
-        - location (str): The location for the search. This can be a city's name, region, or anything that specifies the location.
-        - radius_miles (int): Optional. The max distance from the described location to limit the search. Distance is specified in miles.
-        """
-        place_details = self.get_latitude_longitude(location)
-        if len(place_details) == 0:
-            return []
-        place_details = place_details[0]
-        location = place_details["name"]
-        latlong = place_details["geometry"]["location"]
-
-        type_of_place = " ".join(type_of_place)
-        # Perform the search using Google Places API
-        # For response format, see https://developers.google.com/maps/documentation/places/web-service/search-nearby#nearby-search-responses
-        places_nearby = self.gmaps.places_nearby(
-            location=(latlong["lat"], latlong["lng"]),
-            keyword=type_of_place,
-            radius=radius_miles * 1609.34,
-        )
-        if places_nearby["status"] != "OK":
-            return []
-
-        places_nearby = places_nearby["results"]
-        places = []
-        for place_nearby in places_nearby:
-            place_location = place_nearby["geometry"]["location"]
-            distance = self.haversine(
-                latlong["lng"],
-                latlong["lat"],
-                place_location["lng"],
-                place_location["lat"],
+            function_str = self.FUNCTION_DEFINITION_TEMPLATE.format(
+                name=function.name, signature=signature, docstring=docstring
             )
-            if distance == 0.0:
+            function_definitions += function_str
+
+        self.prompt_without_query = self.PROMPT_TEMPLATE.format(
+            function_definitions=function_definitions, query="{query}"
+        )
+
+    def get_prompt(self, query: str):
+        return self.prompt_without_query.format(query=query)
+
+    def get_function_call_plan(self, function_call_str: str) -> List[str]:
+        function_call_list = []
+        locals_to_pass = {"function_call_list": function_call_list}
+        for f in FUNCTIONS:
+            name = f.name
+            exec(
+                f"def {name}(**_):\n\tfunction_call_list.append('{f.short_description}')",
+                locals_to_pass,
+            )
+        calls = [c.strip() for c in function_call_str.split(";") if c.strip()]
+        [eval(call, locals_to_pass) for call in calls]
+        return function_call_list
+
+    def run_function_call(self, function_call_str: str):
+        function_call_list = []
+        locals_to_pass = {"function_call_list": function_call_list, "tools": self.tools}
+        for f in FUNCTIONS:
+            name = f.name
+
+            locals_to_pass[f"{name}_description_function"] = f.description_function
+            locals_to_pass[f"{name}_explanation_function"] = f.explanation_function
+
+            function_definition = f"""
+def {name}(**kwargs):
+    result = tools.{f.name}(**kwargs)
+    function_call_list.append(({name}_description_function(**kwargs), {name}_explanation_function(result)))
+    return result
+"""
+            exec(function_definition, locals_to_pass)
+
+        calls = [c.strip() for c in function_call_str.split(";") if c.strip()]
+        for call in calls:
+            locals_to_pass["function_call_list"] = function_call_list = []
+            result = eval(call, locals_to_pass)
+            yield result, function_call_list
+
+
+class RavenDemo(gr.Blocks):
+    def __init__(self, config: DemoConfig) -> None:
+        theme = gr.themes.Soft(
+            primary_hue=gr.themes.colors.blue,
+            secondary_hue=gr.themes.colors.blue,
+        )
+        super().__init__(theme=theme, css=CSS, title="NexusRaven V2 Demo")
+
+        self.config = config
+        self.tools = Tools(config)
+        self.functions_helper = FunctionsHelper(self.tools)
+
+        self.raven_client = InferenceClient(
+            model=config.raven_endpoint, token=config.hf_token
+        )
+        self.summary_model_client = InferenceClient(config.summary_model_endpoint)
+
+        self.max_num_steps = 20
+
+        with self:
+            gr.HTML(HEADER_HTML)
+            with gr.Row():
+                gr.Image(
+                    "NexusRaven.png",
+                    show_label=False,
+                    show_share_button=True,
+                    min_width=200,
+                    scale=1,
+                )
+                with gr.Column(scale=4, min_width=800):
+                    gr.Markdown(INTRO_TEXT, elem_classes="inner-large-font")
+                    with gr.Row():
+                        examples = [
+                            gr.Button(query_name) for query_name in EXAMPLE_QUERIES
+                        ]
+
+            user_input = gr.Textbox(
+                placeholder="Ask me anything!",
+                show_label=False,
+                autofocus=True,
+            )
+
+            raven_function_call = gr.Code(
+                label="🐦‍⬛ NexusRaven V2 13B generated function call",
+                language="python",
+                interactive=False,
+                lines=10,
+            )
+            with gr.Accordion(
+                "Executing plan generated by 🐦‍⬛ NexusRaven V2 13B", open=True
+            ) as steps_accordion:
+                steps = [
+                    gr.Textbox(visible=False, show_label=False)
+                    for _ in range(self.max_num_steps)
+                ]
+
+            with gr.Column():
+                initial_relevant_places = self.get_relevant_places([])
+                relevant_places = gr.State(initial_relevant_places)
+                place_dropdown_choices = self.get_place_dropdown_choices(
+                    initial_relevant_places
+                )
+                places_dropdown = gr.Dropdown(
+                    choices=place_dropdown_choices,
+                    value=place_dropdown_choices[0],
+                    label="Relevant places",
+                )
+                gmaps_html = gr.HTML(self.get_gmaps_html(initial_relevant_places[0]))
+
+            summary_model_summary = gr.Textbox(
+                label="Chat summary",
+                interactive=False,
+                show_copy_button=True,
+                lines=10,
+                max_lines=1000,
+                autoscroll=False,
+                elem_classes="inner-large-font",
+            )
+
+            with gr.Accordion("Raven inputs", open=False):
+                gr.Textbox(
+                    label="Available functions",
+                    value="`" + "`, `".join(f.name for f in FUNCTIONS) + "`",
+                    interactive=False,
+                    show_copy_button=True,
+                )
+                gr.Textbox(
+                    label="Raven prompt",
+                    value=self.functions_helper.get_prompt("{query}"),
+                    interactive=False,
+                    show_copy_button=True,
+                    lines=20,
+                )
+
+            user_input.submit(
+                fn=self.on_submit,
+                inputs=[user_input],
+                outputs=[
+                    user_input,
+                    raven_function_call,
+                    summary_model_summary,
+                    relevant_places,
+                    places_dropdown,
+                    gmaps_html,
+                    steps_accordion,
+                    *steps,
+                ],
+                concurrency_limit=20,  # not a hyperparameter
+                api_name=False,
+            )
+
+            for i, button in enumerate(examples):
+                button.click(
+                    fn=EXAMPLE_QUERIES.get,
+                    inputs=button,
+                    outputs=user_input,
+                    api_name=f"button_click_{i}",
+                )
+
+            places_dropdown.input(
+                fn=self.get_gmaps_html_from_dropdown,
+                inputs=[places_dropdown, relevant_places],
+                outputs=gmaps_html,
+            )
+
+    def on_submit(self, query: str, request: gr.Request):
+        def get_returns():
+            return (
+                user_input,
+                raven_function_call,
+                summary_model_summary,
+                relevant_places,
+                places_dropdown,
+                gmaps_html,
+                steps_accordion,
+                *steps,
+            )
+
+        user_input = gr.Textbox(interactive=False)
+        raven_function_call = ""
+        summary_model_summary = ""
+        relevant_places = []
+        places_dropdown = ""
+        gmaps_html = ""
+        steps_accordion = gr.Accordion(open=True)
+        steps = [gr.Textbox(value="", visible=False) for _ in range(self.max_num_steps)]
+        yield get_returns()
+
+        raven_prompt = self.functions_helper.get_prompt(
+            query.replace("'", r"\'").replace('"', r"\"")
+        )
+        print(f"{'-' * 80}\nPrompt sent to Raven\n\n{raven_prompt}\n\n{'-' * 80}\n")
+        stream = self.raven_client.text_generation(
+            raven_prompt, **RAVEN_GENERATION_KWARGS
+        )
+        for s in stream:
+            for c in s:
+                raven_function_call += c
+                raven_function_call = raven_function_call.removesuffix("<bot_end>")
+                yield get_returns()
+
+        print(f"Raw Raven response before formatting: {raven_function_call}")
+
+        r_calls = [c.strip() for c in raven_function_call.split(";") if c.strip()]
+        f_r_calls = []
+        for r_c in r_calls:
+            f_r_call = format_str(r_c.strip(), mode=Mode())
+            f_r_calls.append(f_r_call)
+
+        raven_function_call = "; ".join(f_r_calls)
+
+        yield get_returns()
+
+        self._set_client_ip(request)
+        function_call_plan = self.functions_helper.get_function_call_plan(
+            raven_function_call
+        )
+        for i, v in enumerate(function_call_plan):
+            steps[i] = gr.Textbox(value=f"{i+1}. {v}", visible=True)
+            yield get_returns()
+            sleep(0.1)
+
+        results_gen = self.functions_helper.run_function_call(raven_function_call)
+        results = []
+        previous_num_calls = 0
+        for result, function_call_list in results_gen:
+            results.extend(result)
+            for i, (description, explanation) in enumerate(function_call_list):
+                i = i + previous_num_calls
+
+                if len(description) > 100:
+                    description = function_call_plan[i]
+                to_stream = f"{i+1}. {description} ..."
+                steps[i] = ""
+                for c in to_stream:
+                    steps[i] += c
+                    sleep(0.005)
+                    yield get_returns()
+
+                to_stream = "." * randint(0, 5)
+                for c in to_stream:
+                    steps[i] += c
+                    sleep(0.2)
+                    yield get_returns()
+
+                to_stream = f" {explanation}"
+                for c in to_stream:
+                    steps[i] += c
+                    sleep(0.005)
+                    yield get_returns()
+
+            previous_num_calls += len(function_call_list)
+
+        relevant_places = self.get_relevant_places(results)
+        gmaps_html = self.get_gmaps_html(relevant_places[0])
+        places_dropdown_choices = self.get_place_dropdown_choices(relevant_places)
+        places_dropdown = gr.Dropdown(
+            choices=places_dropdown_choices, value=places_dropdown_choices[0]
+        )
+        steps_accordion = gr.Accordion(open=False)
+        yield get_returns()
+
+        while True:
+            try:
+                summary_model_prompt = self.get_summary_model_prompt(results, query)
+                print(
+                    f"{'-' * 80}\nPrompt sent to summary model\n\n{summary_model_prompt}\n\n{'-' * 80}\n"
+                )
+                stream = self.summary_model_client.text_generation(
+                    summary_model_prompt, **SUMMARY_MODEL_GENERATION_KWARGS
+                )
+                for s in stream:
+                    for c in s:
+                        summary_model_summary += c
+                        summary_model_summary = (
+                            summary_model_summary.lstrip().removesuffix(
+                                "<|end_of_turn|>"
+                            )
+                        )
+                        yield get_returns()
+            except huggingface_hub.inference._text_generation.ValidationError:
+                if len(results) > 1:
+                    new_length = (3 * len(results)) // 4
+                    results = results[:new_length]
+                    continue
+                else:
+                    break
+
+            break
+
+        user_input = gr.Textbox(interactive=True)
+        yield get_returns()
+
+    def get_summary_model_prompt(self, results: List, query: str) -> None:
+        # TODO check what outputs are returned and return them properly
+        ALLOWED_KEYS = [
+            "author_name",
+            "text",
+            "for_location",
+            "time",
+            "author_url",
+            "language",
+            "original_language",
+            "name",
+            "opening_hours",
+            "rating",
+            "user_ratings_total",
+            "vicinity",
+            "distance",
+            "formatted_address",
+            "price_level",
+            "types",
+        ]
+        ALLOWED_KEYS = set(ALLOWED_KEYS)
+
+        results_str = ""
+        for idx, res in enumerate(results):
+            if isinstance(res, str):
+                results_str += f"{res}\n"
                 continue
 
-            distance = distance * 0.621371
-            place_nearby["distance"] = f"{distance} miles from {location}"
-            places.append(place_nearby)
+            assert isinstance(res, dict)
 
-        if len(places) == 0:
-            return []
+            item_str = ""
+            for key, value in res.items():
+                if key not in ALLOWED_KEYS:
+                    continue
 
-        return self.sort_results(places, sort="distance", descending=False)
+                key = key.replace("_", " ").capitalize()
+                item_str += f"\t{key}: {value}\n"
 
-    def get_some_reviews(self, place_names: list, location: str = None):
+            results_str += f"Result {idx + 1}\n{item_str}\n"
+
+        current_time = datetime.now().strftime("%b %d, %Y %H:%M:%S")
+        current_location = self.tools.get_current_location()
+
+        prompt = SUMMARY_MODEL_PROMPT.format(
+            current_location=current_location,
+            current_time=current_time,
+            results=results_str,
+            query=query,
+        )
+        return prompt
+
+    def get_relevant_places(self, results: List) -> List[Tuple[str, str]]:
         """
-        Given an establishment (or place) name, return reviews about the establishment.
+        Returns
+        -------
+        relevant_places: List[Tuple[str, str]]
+            A list of tuples, where each tuple is (address, name)
 
-        - place_names (list): The name of the establishment. This should be a physical location name. You can provide multiple inputs.
-        - location (str) : The location where the restaurant is located. Optional argument.
         """
-        all_reviews = []
-        for place_name in place_names:
-            if isinstance(place_name, str):
-                if location and isinstance(location, list) and len(location) > 0:
-                    # Sometimes location will be a list of relevant places from the API.
-                    # We just use the first one.
-                    location = location[0]
-                elif location and isinstance(location, list):
-                    # No matching spaces found in the API, len of 0
-                    location = None
-                if location and isinstance(location, dict):
-                    # Weird response from the API, likely a timeout error, disable geoloc
-                    location = None
-                if location and isinstance(location, str):
-                    place_name += " , " + location
-            elif (
-                isinstance(place_name, dict)
-                and "results" in place_name
-                and "name" in place_name["results"]
-            ):
-                place_name = place_name["results"]["name"]
-            elif isinstance(place_name, dict) and "name" in place_name:
-                place_name = place_name["name"]
+        # We use a dict to preserve ordering, while enforcing uniqueness
+        relevant_places = dict()
+        for result in results:
+            if "formatted_address" in result and "name" in result:
+                relevant_places[(result["formatted_address"], result["name"])] = None
+            elif "formatted_address" in result and "for_location" in result:
+                relevant_places[
+                    (result["formatted_address"], result["for_location"])
+                ] = None
+            elif "vicinity" in result and "name" in result:
+                relevant_places[(result["vicinity"], result["name"])] = None
 
-            place_details = self.get_latitude_longitude(place_name)
-            if len(place_details) == 0:
-                continue
-            place_details = place_details[0]
+        relevant_places = list(relevant_places.keys())
 
-            reviews = place_details.get("reviews", [])
+        if not relevant_places:
+            current_location = self.tools.get_current_location()
+            relevant_places.append((current_location, current_location))
 
-            for review in reviews:
-                review["for_location"] = place_name
-                review["formatted_address"] = place_details["formatted_address"]
+        return relevant_places
 
-            all_reviews.extend(reviews)
+    def get_place_dropdown_choices(
+        self, relevant_places: List[Tuple[str, str]]
+    ) -> List[str]:
+        return [p[1] for p in relevant_places]
 
-        random.shuffle(all_reviews)
+    def get_gmaps_html(self, relevant_place: Tuple[str, str]) -> str:
+        address, name = relevant_place
+        return GMAPS_EMBED_HTML_TEMPLATE.format(
+            address=quote(address), location=quote(name)
+        )
 
-        return all_reviews
+    def get_gmaps_html_from_dropdown(
+        self, place_name: str, relevant_places: List[Tuple[str, str]]
+    ) -> str:
+        relevant_place = [p for p in relevant_places if p[1] == place_name][0]
+        return self.get_gmaps_html(relevant_place)
+
+    def _set_client_ip(self, request: gr.Request) -> None:
+        client_ip = request.client.host
+        if (
+            "headers" in request.kwargs
+            and "x-forwarded-for" in request.kwargs["headers"]
+        ):
+            x_forwarded_for = request.kwargs["headers"]["x-forwarded-for"]
+        else:
+            x_forwarded_for = request.headers.get("x-forwarded-for", None)
+        if x_forwarded_for:
+            client_ip = x_forwarded_for.split(",")[0].strip()
+
+        self.tools.client_ip = client_ip
+
+
+demo = RavenDemo(DemoConfig.load_from_env())
+
+if __name__ == "__main__":
+    demo.launch(
+        share=True,
+        allowed_paths=["logo.png", "NexusRaven.png"],
+        favicon_path="logo.png",
+    )
