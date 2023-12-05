@@ -50,9 +50,12 @@ class Tools:
             city = location_data["city"]
             region = location_data["regionName"]
             country = location_data["countryCode"]
-            return f"{city}, {region}, {country}"
+            location = f"{city}, {region}, {country}"
+            print(f"User successfully located in {location}")
         except:
-            return "San Francisco, California, US"
+            location = "San Francisco, California, US"
+            print(f"Not able to find user. Defaulting to {location}")
+        return location
 
     def sort_results(
         self, places: list, sort: str, descending: bool = True, first_n: int = None
@@ -105,6 +108,7 @@ class Tools:
         )
         if results["status"] != "OK":
             return []
+        print(results)
 
         # We always use the first candidate
         place_id = results["candidates"][0]["place_id"]
