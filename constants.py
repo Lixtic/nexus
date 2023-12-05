@@ -27,7 +27,7 @@ SUMMARY_MODEL_GENERATION_KWARGS = {
 EXAMPLE_QUERIES = {
     "Discover Your Locale": "Get me good food nearby?",
     "Gather Opinions": "What are people saying about Golden Gate Park in San Francisco?",
-    "Compare Feedback": "Can you get me reviews for So Gong Dong Tofu house and Siam Thai Cuisine and compare them specifically regarding how tasty the food is? Summarize the answer. Please print the review texts you reference.",
+    "Compare Feedback": "Can you get me reviews for So Gong Dong Tofu house and Siam Thai Cuisine in San Jose and compare them specifically regarding how tasty the food is? Summarize the answer. Please print the review texts you reference.",
     "Tailored Recommendations": "Get me some good vegetarian Chinese food in San Francisco?",
     "Proximity Searches": "Can you list me hostels that are cheaper than $200 per night? I need the place to be within 20 miles from San Francisco City Hall.",
     "Deep Insights": "Can you please compare the reviews for Ippudo Ramen, Ramen Nagi and Yayoi Cupertino?",
