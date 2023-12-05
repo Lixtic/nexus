@@ -5,7 +5,7 @@ Nothing in this file is specific to Raven, code/information related to Raven can
 
 For more information about the Google Maps Places API Python client, see https://github.com/googlemaps/google-maps-services-python
 """
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from math import radians, cos, sin, asin, sqrt
 
@@ -44,18 +44,37 @@ class Tools:
         """
         Returns the current location. ONLY use this if the user has not provided an explicit location in the query.
         """
-        try:
-            response = requests.get(f"http://ip-api.com/json/{self.client_ip}")
-            location_data = response.json()
-            city = location_data["city"]
-            region = location_data["regionName"]
-            country = location_data["countryCode"]
-            location = f"{city}, {region}, {country}"
-            print(f"User successfully located in {location}")
-        except:
-            location = "San Francisco, California, US"
-            print(f"Not able to find user. Defaulting to {location}")
+        location_data = self._get_current_location_information()
+        city = location_data["city"]
+        region = location_data["regionName"]
+        country = location_data["countryCode"]
+        location = f"{city}, {region}, {country}"
         return location
+
+    def _get_current_location_information(self) -> Dict[str, Any] | None:
+        default_response = {
+            "lat": "37.7577607",
+            "lon": "-122.4788854",
+            "city": "San Francisco",
+            "regionName": "California",
+            "countryCode": "US",
+            "country": "United States",
+            "region": "CA",
+        }
+        response = requests.get(
+            f"https://pro.ip-api.com/json/{self.client_ip}?key={self.config.ip_api_key}"
+        )
+        if not response.ok:
+            print(f"Not able to find user. Defaulting to {default_response}")
+            return default_response
+
+        response = response.json()
+        if response["status"] != "success":
+            print(f"Not able to find user. Defaulting to {default_response}")
+            return default_response
+
+        print(f"User successfully located in {response}")
+        return response
 
     def sort_results(
         self, places: list, sort: str, descending: bool = True, first_n: int = None
@@ -102,13 +121,20 @@ class Tools:
         ):
             return location
 
+        current_loc_info = self._get_current_location_information()
+        lat = current_loc_info["lat"]
+        lng = current_loc_info["lon"]
+
+        radius_miles = 100  # Not a hyperparameter
+        radius_meters = radius_miles * 1609.34
         # For response content, see https://developers.google.com/maps/documentation/places/web-service/search-find-place#find-place-responses
         results = self.gmaps.find_place(
-            location, input_type="textquery", location_bias="ipbias"
+            location,
+            input_type="textquery",
+            location_bias=f"circle:{radius_meters}@{lat},{lng}",
         )
         if results["status"] != "OK":
             return []
-        print(results)
 
         # We always use the first candidate
         place_id = results["candidates"][0]["place_id"]
