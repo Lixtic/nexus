@@ -43,7 +43,7 @@ FUNCTIONS = [
     Function(
         name="sort_results",
         short_description="Sorting results",
-        description_function=lambda places, sort, descending=True, first_n = None: f"Sorting results by {sort} from "
+        description_function=lambda places, sort, descending=True, first_n=None: f"Sorting results by {sort} from "
         + ("lowest to highest" if not descending else "highest to lowest"),
         explanation_function=lambda result: "Done!",
     ),
@@ -56,8 +56,8 @@ FUNCTIONS = [
     Function(
         name="get_distance",
         short_description="Calcuate distance",
-        description_function=lambda place_1, place_2: f"Calculating the distance between various places...",
-        explanation_function=lambda result: result[0],
+        description_function=lambda place_1, place_2: "Calculating distances",
+        explanation_function=lambda result: result[2],
     ),
     Function(
         name="get_recommendations",
@@ -71,13 +71,14 @@ FUNCTIONS = [
     Function(
         name="find_places_near_location",
         short_description="Look for places",
-        description_function=lambda type_of_place, location, radius_miles = 50: f"Looking for places near {location} within {radius_miles} with the following "
+        description_function=lambda type_of_place, location, radius_miles=50: f"Looking for places near {location} within {radius_miles} with the following "
         + (
             f"types: {', '.join(type_of_place)}"
             if isinstance(type_of_place, list)
             else f"type: {type_of_place}"
         ),
-        explanation_function=lambda result: f"Found {len(result)} places!",
+        explanation_function=lambda result: f"Found "
+        + (f"{len(result)} places!" if len(result) > 1 else f"1 place!"),
     ),
     Function(
         name="get_some_reviews",
@@ -304,7 +305,9 @@ class RavenDemo(gr.Blocks):
         steps = [gr.Textbox(value="", visible=False) for _ in range(self.max_num_steps)]
         yield get_returns()
 
-        raven_prompt = self.functions_helper.get_prompt(query.replace("'", r"\'").replace('"', r'\"'))
+        raven_prompt = self.functions_helper.get_prompt(
+            query.replace("'", r"\'").replace('"', r"\"")
+        )
         print(f"{'-' * 80}\nPrompt sent to Raven\n\n{raven_prompt}\n\n{'-' * 80}\n")
         stream = self.raven_client.text_generation(
             raven_prompt, **RAVEN_GENERATION_KWARGS
@@ -385,13 +388,15 @@ class RavenDemo(gr.Blocks):
                 for s in stream:
                     for c in s:
                         summary_model_summary += c
-                        summary_model_summary = summary_model_summary.lstrip().removesuffix(
-                            "<|end_of_turn|>"
+                        summary_model_summary = (
+                            summary_model_summary.lstrip().removesuffix(
+                                "<|end_of_turn|>"
+                            )
                         )
                         yield get_returns()
             except huggingface_hub.inference._text_generation.ValidationError:
                 if len(results) > 1:
-                    new_length = (3*len(results)) // 4
+                    new_length = (3 * len(results)) // 4
                     results = results[:new_length]
                     continue
                 else:
