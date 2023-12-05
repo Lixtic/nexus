@@ -10,6 +10,8 @@ from time import sleep
 
 import inspect
 
+import ast
+
 from random import randint
 
 from urllib.parse import quote
@@ -179,6 +181,7 @@ class RavenDemo(gr.Blocks):
         self.summary_model_client = InferenceClient(config.summary_model_endpoint)
 
         self.max_num_steps = 20
+        self.function_call_name_set = set([f.name for f in FUNCTIONS])
 
         with self:
             gr.HTML(HEADER_HTML)
@@ -299,6 +302,10 @@ class RavenDemo(gr.Blocks):
                 *steps,
             )
 
+        def on_error():
+            initial_return[0] = gr.Textbox(interactive=True, autofocus=False)
+            return initial_return
+
         user_input = gr.Textbox(interactive=False)
         raven_function_call = ""
         summary_model_summary = ""
@@ -307,7 +314,8 @@ class RavenDemo(gr.Blocks):
         gmaps_html = ""
         steps_accordion = gr.Accordion(open=True)
         steps = [gr.Textbox(value="", visible=False) for _ in range(self.max_num_steps)]
-        yield get_returns()
+        initial_return = list(get_returns())
+        yield initial_return
 
         raven_prompt = self.functions_helper.get_prompt(
             query.replace("'", r"\'").replace('"', r"\"")
@@ -328,7 +336,18 @@ class RavenDemo(gr.Blocks):
         r_calls = [c.strip() for c in raven_function_call.split(";") if c.strip()]
         f_r_calls = []
         for r_c in r_calls:
-            f_r_call = format_str(r_c.strip(), mode=Mode())
+            try:
+                f_r_call = format_str(r_c.strip(), mode=Mode())
+            except:
+                yield on_error()
+                gr.Warning(ERROR_MESSAGE)
+                return
+
+            if not self.whitelist_function_names(f_r_call):
+                yield on_error()
+                gr.Warning(ERROR_MESSAGE)
+                return
+
             f_r_calls.append(f_r_call)
 
         raven_function_call = "; ".join(f_r_calls)
@@ -423,6 +442,21 @@ class RavenDemo(gr.Blocks):
 
         user_input = gr.Textbox(interactive=True, autofocus=False)
         yield get_returns()
+
+    def whitelist_function_names(self, function_call_str: str) -> bool:
+        """
+        Defensive function name whitelisting inspired by @evan-nexusflow
+        """
+        for expr in ast.walk(ast.parse(function_call_str)):
+            if not isinstance(expr, ast.Call):
+                continue
+
+            expr: ast.Call
+            function_name = expr.func.id
+            if function_name not in self.function_call_name_set:
+                return False
+
+        return True
 
     def get_summary_model_prompt(self, results: List, query: str) -> None:
         # TODO check what outputs are returned and return them properly
