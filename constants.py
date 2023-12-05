@@ -71,3 +71,5 @@ HEADER_HTML = """<img width="50" height="50" style="float:left; margin: 0px;" sr
 GMAPS_EMBED_HTML_TEMPLATE = """
 <iframe width="100%" height="600" frameborder="0" scrolling="no" marginheight="0" marginwidth="0" src="https://maps.google.com/maps?width=100%25&amp;height=600&amp;hl=en&amp;q={location}+{address}&amp;t=&amp;z=18&amp;ie=UTF8&amp;iwloc=B&amp;output=embed">
 """
+
+ERROR_MESSAGE = "Sorry, I couldn't fulfill your request! Please try again :)"
