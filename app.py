@@ -389,6 +389,7 @@ class RavenDemo(gr.Blocks):
                     summary_model_prompt, **SUMMARY_MODEL_GENERATION_KWARGS
                 )
                 for s in stream:
+                    s = s.removesuffix("<|end_of_turn|>")
                     for c in s:
                         summary_model_summary += c
                         summary_model_summary = (
