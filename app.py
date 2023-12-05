@@ -304,7 +304,7 @@ class RavenDemo(gr.Blocks):
         steps = [gr.Textbox(value="", visible=False) for _ in range(self.max_num_steps)]
         yield get_returns()
 
-        raven_prompt = self.functions_helper.get_prompt(query)
+        raven_prompt = self.functions_helper.get_prompt(query.replace("'", r"\'").replace('"', r'\"'))
         print(f"{'-' * 80}\nPrompt sent to Raven\n\n{raven_prompt}\n\n{'-' * 80}\n")
         stream = self.raven_client.text_generation(
             raven_prompt, **RAVEN_GENERATION_KWARGS
