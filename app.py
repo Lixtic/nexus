@@ -194,7 +194,7 @@ class RavenDemo(gr.Blocks):
                         ]
 
             user_input = gr.Textbox(
-                placeholder="Ask me anything!",
+                placeholder="Ask anything about places, recommendations, or reviews!",
                 show_label=False,
                 autofocus=True,
             )
