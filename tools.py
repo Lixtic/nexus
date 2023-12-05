@@ -25,12 +25,6 @@ class Tools:
         self.gmaps = Client(config.gmaps_client_key)
         self.client_ip: str | None = None
 
-    def capitalize(self, s: str) -> str:
-        if s.lower() != s:
-            return s
-
-        return s.title()
-
     def haversine(self, lon1, lat1, lon2, lat2) -> float:
         """
         Calculate the great circle distance in kilometers between two points on the earth (specified in decimal degrees).
@@ -98,13 +92,26 @@ class Tools:
 
         - location: This can be a city like 'Austin', or a place like 'Austin Airport', etc.
         """
+        if (
+            isinstance(location, list)
+            and len(location) != 0
+            and isinstance(location[0], dict)
+        ):
+            return location
 
-        # For response content, see https://developers.google.com/maps/documentation/geocoding/requests-geocoding#GeocodingResponses
-        results = self.gmaps.geocode(location)
-        location = self.capitalize(location)
-        for r in results:
-            r["name"] = location
-        return results
+        # For response content, see https://developers.google.com/maps/documentation/places/web-service/search-find-place#find-place-responses
+        results = self.gmaps.find_place(
+            location, input_type="textquery", location_bias="ipbias"
+        )
+        if results["status"] != "OK":
+            return []
+
+        # We always use the first candidate
+        place_id = results["candidates"][0]["place_id"]
+
+        # For response format, see https://developers.google.com/maps/documentation/places/web-service/details#PlaceDetailsResponses
+        place_details = self.gmaps.place(place_id=place_id)["result"]
+        return [place_details]
 
     def get_distance(self, place_1: str, place_2: str):
         """
@@ -182,25 +189,28 @@ class Tools:
         - location (str): The location for the search. This can be a city's name, region, or anything that specifies the location.
         - radius_miles (int): Optional. The max distance from the described location to limit the search. Distance is specified in miles.
         """
-        # Get latitude and longitude for the location
-        verb_location = location
-        geocode_result = self.gmaps.geocode(location)
-        if geocode_result:
-            latlong = geocode_result[0]["geometry"]["location"]
-            location = (latlong["lat"], latlong["lng"])
-        else:
+        place_details = self.get_latitude_longitude(location)
+        if len(place_details) == 0:
             return []
+        place_details = place_details[0]
+        location = place_details["name"]
+        latlong = place_details["geometry"]["location"]
 
         type_of_place = " ".join(type_of_place)
         # Perform the search using Google Places API
         # For response format, see https://developers.google.com/maps/documentation/places/web-service/search-nearby#nearby-search-responses
-        places_result = self.gmaps.places_nearby(
-            location=location, keyword=type_of_place, radius=radius_miles * 1609.34
+        places_nearby = self.gmaps.places_nearby(
+            location=(latlong["lat"], latlong["lng"]),
+            keyword=type_of_place,
+            radius=radius_miles * 1609.34,
         )
-        places = places_result.get("results", [])
-        new_places = []
-        for place in places:
-            place_location = place["geometry"]["location"]
+        if places_nearby["status"] != "OK":
+            return []
+
+        places_nearby = places_nearby["results"]
+        places = []
+        for place_nearby in places_nearby:
+            place_location = place_nearby["geometry"]["location"]
             distance = self.haversine(
                 latlong["lng"],
                 latlong["lat"],
@@ -211,10 +221,9 @@ class Tools:
                 continue
 
             distance = distance * 0.621371
-            place["distance"] = f"{distance} miles from {verb_location}"
-            new_places.append(place)
+            place_nearby["distance"] = f"{distance} miles from {location}"
+            places.append(place_nearby)
 
-        places = new_places
         if len(places) == 0:
             return []
 
@@ -251,25 +260,16 @@ class Tools:
             elif isinstance(place_name, dict) and "name" in place_name:
                 place_name = place_name["name"]
 
-            # For response format, see https://developers.google.com/maps/documentation/places/web-service/search-find-place#find-place-responses
-            search_results = self.gmaps.find_place(
-                place_name, input_type="textquery", location_bias="ipbias"
-            )
+            place_details = self.get_latitude_longitude(place_name)
+            if len(place_details) == 0:
+                continue
+            place_details = place_details[0]
 
-            if len(search_results.get("candidates", [])) == 0:
-                return []
-
-            # Assuming the first result is the most relevant
-            place_id = search_results["candidates"][0]["place_id"]
-            # For response format, see https://developers.google.com/maps/documentation/places/web-service/details#PlaceDetailsResponses
-            place_details = self.gmaps.place(place_id=place_id)
-            reviews = place_details["result"].get("reviews", [])
+            reviews = place_details.get("reviews", [])
 
             for review in reviews:
                 review["for_location"] = place_name
-                review["formatted_address"] = place_details["result"][
-                    "formatted_address"
-                ]
+                review["formatted_address"] = place_details["formatted_address"]
 
             all_reviews.extend(reviews)
 
