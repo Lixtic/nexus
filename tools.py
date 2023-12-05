@@ -114,7 +114,7 @@ class Tools:
             place_2 = place_2["name"]
 
         if len(latlong_1) == 0 or len(latlong_2) == 0:
-            raise ValueError
+            return "No place found for the query. Please be more explicit."
 
         latlong1 = latlong_1[0]["geometry"]["location"]
         latlong2 = latlong_2[0]["geometry"]["location"]
@@ -161,7 +161,7 @@ class Tools:
             latlong = geocode_result[0]["geometry"]["location"]
             location = (latlong["lat"], latlong["lng"])
         else:
-            raise ValueError("Could not geocode the provided location.")
+            return []
 
         type_of_place = " ".join(type_of_place)
         # Perform the search using Google Places API
